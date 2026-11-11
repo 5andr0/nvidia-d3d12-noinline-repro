@@ -1,10 +1,12 @@
 /build/
-/data/
+/data/*
+!/data/baseline.dxil
 /results/
-/diagnostic.exe
 __pycache__/
+*.exe
 *.obj
 *.pdb
 *.ilk
 *.dll
 *.dxil
+!/data/baseline.dxil

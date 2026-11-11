@@ -1,4 +1,5 @@
 * text=auto eol=lf
-*.cmd text eol=crlf
-# Preserve the measured HLSL bytes, which the baseline harness checks exactly.
+# Preserve the measured HLSL bytes, including line endings.
 source/baseline.hlsl -text
+# The one authored, normally signed shader supplied for execution.
+data/baseline.dxil binary
