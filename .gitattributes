@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.cmd text eol=crlf
+# Preserve the measured HLSL bytes, which the baseline harness checks exactly.
+source/baseline.hlsl -text

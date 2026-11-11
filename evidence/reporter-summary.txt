@@ -1,0 +1,1 @@
+Second-PC report, 2026-11-11: NVIDIA exit0 KNOWN_BAD48/112; AMD exit0 CORRECT0/112; WARP exit0 CORRECT0/112. Debug layer enabled for all3. This is the reporter-provided summary; raw adapter/driver/OS and result folders are not yet independently inspected.

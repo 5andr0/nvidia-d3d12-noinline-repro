@@ -1,0 +1,1 @@
+Original project-authored C++/HLSL and synthetic data, under the accompanying MIT license. The source-only attachment contains no third-party runtime binary, SDK source/header, game data, recovered source or disassembled IR. Windows SDK and MSVC are normal build prerequisites supplied by the developer, not redistributed here.

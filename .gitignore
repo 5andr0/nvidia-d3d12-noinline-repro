@@ -1,0 +1,10 @@
+/build/
+/data/
+/results/
+/diagnostic.exe
+__pycache__/
+*.obj
+*.pdb
+*.ilk
+*.dll
+*.dxil
