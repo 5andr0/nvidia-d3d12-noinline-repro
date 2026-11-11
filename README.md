@@ -14,8 +14,6 @@ cd nvidia-d3d12-noinline-repro
 py repro.py --all
 ```
 
-GitHub's **Code > Download ZIP** also works: extract the archive and run `py repro.py --all` in that folder.
-
 `--all` starts this same Python interpreter once for NVIDIA and once for WARP. Each child creates one device and direct queue. Missing adapters and unsupported shader capabilities are reported; there is no implicit adapter, fallback or retry. Multiple NVIDIA adapters require an explicit LUID. The default controls contain no Vulkan path.
 
 ```bat

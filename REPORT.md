@@ -1,81 +1,68 @@
-# [D3D12] Incorrect vertex shader values with noinline helpers on NVIDIA; WARP control correct
+# D3D12: incorrect vertex shader results with noinline scalar-return helpers on NVIDIA
 
-A small, standalone D3D12 vertex shader produces repeatable incorrect values on NVIDIA hardware. The same compiled shader and synthetic inputs produce the exact expected values on AMD integrated graphics and Microsoft WARP. Please investigate the NVIDIA compilation/execution path; the precise internal cause has not been established.
+A standalone `vs_6_8` shader produces repeatable incorrect values on NVIDIA. The same compiled shader and inputs match the exact oracle on WARP. A source-equivalent helper prototype change also produces correct results on NVIDIA with the same stock DXC.
 
-## Direct Python results
+- [Reproducer and harness](https://github.com/5andr0/nvidia-d3d12-noinline-repro)
+- [Failing baseline HLSL](https://raw.githubusercontent.com/5andr0/nvidia-d3d12-noinline-repro/main/source/baseline.hlsl)
+- [Passing inout-array HLSL](https://raw.githubusercontent.com/5andr0/nvidia-d3d12-noinline-repro/main/source/array-inout.hlsl)
+- [Measured results and per-word evidence](https://github.com/5andr0/nvidia-d3d12-noinline-repro/blob/main/evidence/comparison-results.json)
 
-The direct Python/ctypes host was tested on Windows 11 build26200.9711 with 64-bit CPython3.13.15:
+## Environment and failure
 
-| Control | Wrong words /112 | Driver | Result |
-|---|---:|---|---|
-| NVIDIA GeForce RTX5080 |48|DXGI32.0.16.2114 / GeForce621.14|Exact known-bad448-byte payload|
-| Microsoft WARP |0|10.0.26100.9711|Exact independent integer oracle|
+RTX 5080, NVIDIA driver **32.0.16.2114 / GeForce 621.14**, Windows 11 **26200.9711**. Stock compiler: Windows SDK **10.0.26100.0**, DXC **1.8.2502.11**. Compilation and validation/signing use the unmodified SDK tools.
 
-Each control used one four-vertex draw and two fenced submissions. Both children exited0 and drained; normal D3D12 debug capture was enabled and contained no ERROR/CORRUPTION messages. Three warning1328 diagnostics per control report buffers effectively starting in COMMON. Full inputs/readbacks, guards, counters, all112 words, CSV/JSON agreement, allocation ledgers and actual runtime/adapter identities were checked independently of the host's result classifier. The host and shader were unchanged between controls.
+The shader performs indexed palette loads and weighted dot products through **20 noinline helpers, 37 live calls and 12 precise dots**. All inputs are synthetic. The intended arithmetic intermediates are positive integers no greater than 5350, exactly representable in binary32. An independent integer oracle compares all **112 output words** without tolerance.
 
-The later default `--all` selection change simply limits the command to NVIDIA plus WARP; the individual graphics and supervision paths are unchanged and CPU-tested. No Vulkan implementation or Vulkan test is included. Separate earlier Vulkan precision-fixture results are not a measurement of this exact112-word D3D12 case.
+NVIDIA returns **48/112 incorrect words**. For the first vertex, expected `SV_Position` is `(2700, 2980, 3260, 1)`; observed output is `(2700, 3820, 4100, 1)`. Captured first-bone Y/Z row values equal the fourth bone's rows. The complete 448-byte output matches the retained failure payload.
 
-## Current paired controls
+Both NVIDIA and WARP runs complete normally with the debug layer enabled and no ERROR/CORRUPTION messages. Full VB/CB GPU readbacks match before PSO creation. Stream-output guards, filled/written/needed counters and every output word are retained and checked. This reproducer calls D3D12 directly, independently of wgpu, Naga or Iridia.
 
-Fresh direct-Python measurements on 2026-11-11, RTX 5080, NVIDIA driver 32.0.16.2114 (`driver_version_raw=9007199255791682`), Windows build 26200:
+## Controlled prototype comparison
 
-| Case | NVIDIA wrong words / 112 | WARP wrong words / 112 |
-|---|---:|---:|
-| Stock DXC, scalar return (`baseline`) |48|0|
-| Amended DXC, same scalar-return HLSL (`scalar-amended`) |48|0|
-| Same amended DXC, scalar out-result (`out-amended`) |0|0|
-| Same stock DXC as baseline, inout operand array (`array-stock`) |0|0|
+Fresh measurements on the same RTX 5080 host; one draw per adapter/case, no retries:
 
-Each selection ran once without retries, exited cleanly, and passed complete input readbacks, all 112 output words, raw guards/counters, allocation and debug-layer checks. The debug layer was enabled. [Machine-readable results and per-word evidence](evidence/comparison-results.json) retain every comparison. The original baseline source/blob are unchanged.
+| Helper form | Compiler | NVIDIA wrong / 112 | WARP wrong / 112 |
+|---|---|---:|---:|
+| Scalar return, baseline | Stock SDK DXC | 48 | 0 |
+| Identical scalar-return source | Amended DXC | 48 | 0 |
+| Void with scalar `out` result | Same amended DXC | 0 | 0 |
+| Void with typed `inout` operand array | Same stock SDK DXC as baseline | 0 | 0 |
 
-The stock `inout` candidate is a source-level workaround for this fixed case. It preserves the 20 noinline helpers, 37 calls, 12 precise dots, ordered arithmetic, graphics signatures and all 82 dependency edges. CPU tests also validated optimized/debug and default/FTZ variants, but this hardware table qualifies only the supplied optimized FTZ blobs. No general shader, performance or production compatibility claim is made.
+The passing stock form initializes a local array with the actual operands, performs the original operation inside a noinline helper, and overwrites element zero:
 
-The same-compiler controls establish that amended DXC alone does not fix the scalar-return failure. Both out-result source forms pass in the tested configurations. This narrows the trigger without establishing NVIDIA's internal failure mechanism. The stock array form does not require DXC PR #9114.
-
-See [run and optional compile instructions](README.md) and [case hashes/compiler provenance](evidence/cases.json). The host remains pure Python/ctypes, with supplied shaders and no EXE/DLL dependency. NVIDIA plus WARP remain the default controls; AMD is explicit and optional.
-
-## Historical C++ host results
-
-| Test | Wrong 32-bit words / 112 | Debug layer | Evidence |
-|---|---:|---|---|
-| RTX 5080, driver 32.0.16.2114 |48|Enabled|Full raw inputs, readbacks and outputs inspected|
-| NVIDIA on a second PC, described as RTX 3090 |48|Enabled|Reporter-provided console summary; adapter/driver metadata pending|
-| AMD integrated graphics on the second PC |0|Enabled|Reporter-provided console summary|
-| WARP on the second PC |0|Enabled|Reporter-provided console summary|
-| WARP on the RTX 5080 host |0|Enabled|Full raw inputs, readbacks and outputs inspected|
-
-Every reported process exited 0 with `numeric_interpretation=true`. NVIDIA's `KNOWN_BAD` classification reports an exact match with the earlier 448-byte failure payload, not merely the same mismatch count. The second-PC raw result folders have not yet been independently inspected. Its exact NVIDIA/AMD driver and Windows versions should be added when available.
-
-The RTX 5080 host is Windows 11 build 26200.9711 (25H2). The first vertex's expected output is `(2700,2980,3260,1)`; NVIDIA produces `(2700,3820,4100,1)`. Saved first-bone Y/Z rows match the fourth bone's rows instead. Execution completes normally: this is incorrect output, not a compilation failure or device crash.
-
-## Pure-Python reproducer
-
-Repository: **https://github.com/5andr0/nvidia-d3d12-noinline-repro**.
-
-The repository contains the [plain HLSL shader](https://raw.githubusercontent.com/5andr0/nvidia-d3d12-noinline-repro/main/source/baseline.hlsl), its exact normally signed [compiled DXIL](https://github.com/5andr0/nvidia-d3d12-noinline-repro/blob/main/data/baseline.dxil), a direct Python/ctypes D3D12 host, Python synthetic fixture/oracle generation and historical text CSVs. There is no supplied native host executable or DLL.
-
-**The historical table records the original C++ host; the direct Python controls are recorded separately above.** The second PC was described as an RTX 3090 system with a 9950X3D; exact raw adapter, driver and OS metadata remain pending.
-
-Execution requires Windows x64, 64-bit x64 CPython 3.9 or newer, and an installed D3D12 runtime/driver supporting shader model 6.8. No SDK, MSVC, DXC, pip package, C++ compilation or shader compilation is required to run it.
-
-```bat
-git clone https://github.com/5andr0/nvidia-d3d12-noinline-repro.git
-cd nvidia-d3d12-noinline-repro
-py repro.py --all
+```hlsl
+[noinline] void multiply(inout float operands[2]) {
+    precise float result = operands[0] * operands[1];
+    operands[0] = result;
+}
+float operands[2] = { left, right };
+multiply(operands);
+float result = operands[0];
 ```
 
-The Python parent starts the same Python interpreter separately for NVIDIA and WARP. Each child calls the Windows APIs directly through `ctypes`. GitHub's **Code > Download ZIP** also works. Single selections use `--vendor nvidia` or `--warp`; `--check-only` runs CPU checks without loading graphics DLLs or enumerating hardware.
+The full candidate retains ordered arithmetic, precision boundaries, all 20 helpers/37 calls/12 dots, identical graphics signatures and all **82 input-to-output dependency edges**. No extra floating-point arithmetic or fabricated live operands are introduced. The amended-compiler pair is an additional control using the unreleased dependency-analysis fix from DXC PR #9114; the passing stock-array case does not require it.
 
-Keep the complete results session, including `summary.json`. Parent exit 0 means every selection matches the oracle, 2 means a valid numerical mismatch, and 1 means an incomplete, unsupported or failed selection. A child must exit 0, retain complete raw evidence and pass the debug gates before its numbers are interpreted. Normal debug-layer availability is disclosed; ERROR/CORRUPTION messages invalidate interpretation.
+A second-host report showed RTX 3090 **48/112**, AMD integrated graphics **0/112**, and WARP **0/112**, with clean exits and debug enabled. That host's raw folders and exact driver/OS metadata have not yet been independently reviewed.
 
-Shader compilation instructions are an **optional** separate section in the [README](https://github.com/5andr0/nvidia-d3d12-noinline-repro#optional-shader-compilation). The exact supplied shader is `vs_6_8`, compiled normally with `-E main -T vs_6_8 -HV 2018 -no-warnings -Ges -denorm ftz`. It contains 20 noinline scalar-return helpers, 37 live calls and 12 precise dots. This route bypasses wgpu, Naga and Iridia entirely.
+## Run and compile
 
-The supplied shader is 9796 bytes, SHA256 `97504fa19268bf6086e15cf7944f54bb59c92647f743a1403226214253515208`. A hash mismatch makes the baseline ineligible before graphics access. No validator setting, assertion or test is disabled, and no shader is regenerated during execution.
+The Python/ctypes harness submits one four-vertex point-list draw with stream output, without rasterization or a swapchain. Normally signed DXIL is supplied alongside HLSL. Running requires Windows x64, 64-bit CPython 3.9+ and SM6.8 support; it does not invoke a compiler.
 
-## Correctness checks and evidence boundary
+```bat
+py repro.py --all
+py repro.py --case array-stock --all
+```
 
-The direct Python controls preserve these checks. All exercised arithmetic intermediates are positive integers no greater than 5350, exactly representable in binary32. An independent integer oracle checks all 112 output words without tolerance. Full vertex/constant-buffer readbacks are checked before PSO creation. The raw 600-byte stream-output audit retains two 64-byte guards, the 448-byte payload and filled/written/needed counts 448/4/4. Normal debug-layer capture found no ERROR/CORRUPTION messages in the independently inspected current-host controls. The result folders retain complete per-word CSV/JSON comparisons and adapter/runtime identities.
+`--all` selects NVIDIA and WARP. Individual adapters can be selected with `--vendor nvidia`, `--warp` or an explicit `--luid`. Results include adapter/runtime identities, source and shader hashes, full raw input/output checks and `summary.json`.
 
-The source archive includes all expected and historical observed values as text CSVs. Earlier experiments changed several variables; the new same-compiler controls above address that limitation. The exact driver-internal mechanism and native-instruction chronology remain unknown. No general production workaround or performance guarantee is claimed.
+For source investigation, compile separately with the stock SDK compiler:
 
-Please reproduce the attached source on NVIDIA hardware and investigate preservation of the indexed row values across the non-inlined helper calls. The additional NVIDIA/AMD/WARP comparison strengthens the NVIDIA-specific diagnosis, but does not by itself conclusively assign fault ownership.
+```bat
+set "DXC=%ProgramFiles(x86)%\Windows Kits\10\bin\10.0.26100.0\x64\dxc.exe"
+"%DXC%" source\baseline.hlsl -E main -T vs_6_8 -HV 2018 -Ges -denorm ftz -Fo baseline.recompiled.dxil
+"%DXC%" source\array-inout.hlsl -E main -T vs_6_8 -HV 2018 -Ges -denorm ftz -Fo array-stock.recompiled.dxil
+```
+
+Exact supplied shader/compiler hashes and compile provenance are in `evidence/cases.json`. No validation bypass or IR/metadata modification was used.
+
+Please investigate preservation of the indexed row values across the original non-inlined scalar-return calls. The prototype comparison narrows the trigger and supplies a working source-level alternative for this case; it does not establish the driver's internal failure mechanism or general performance/compatibility.
