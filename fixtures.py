@@ -18,6 +18,33 @@ PINS = {
 HLSL_SHA = '0f1a6f974cf765f9bc54553808d693437e5a3825232e49633d954585c8563bcb'
 
 
+# All cases use the same synthetic inputs, oracle and graphics interface.
+CASES = {
+    'baseline': {
+        'source': 'source/baseline.hlsl',
+        'source_sha256': '0f1a6f974cf765f9bc54553808d693437e5a3825232e49633d954585c8563bcb',
+        'shader': 'data/baseline.dxil',
+        'bytes': 9796,
+        'sha256': '97504fa19268bf6086e15cf7944f54bb59c92647f743a1403226214253515208',
+    },
+    'scalar-amended': {
+        'source': 'source/baseline.hlsl',
+        'source_sha256': '0f1a6f974cf765f9bc54553808d693437e5a3825232e49633d954585c8563bcb',
+        'shader': 'data/scalar-amended.dxil',
+        'bytes': 9888,
+        'sha256': 'c01d780f23507751170192927f15cb6359c23c951fa0b523a46dd04a42ac20b5',
+    },
+    'out-amended': {
+        'source': 'source/out-result.hlsl',
+        'source_sha256': '9a5eb0daae3aa6149d6f728bbfb2f4176a7c29158ccab9a11dfe29d289a2d5ae',
+        'shader': 'data/out-amended.dxil',
+        'bytes': 12432,
+        'sha256': 'f56f47c68fe29980d76b961e0e86a4ccf3e469fd21fe0b877be6536123cdab00',
+    },
+    'array-stock': {'source': 'source/array-inout.hlsl', 'source_sha256': '6723b7232c85b761d49bfbaa9e6d6c269a0df82ea74470544bc721c15f9e040f', 'shader': 'data/array-stock.dxil', 'bytes': 15724, 'sha256': '1fbed79006488999391766c4471ad9dfe7ca2b38f4b0e813f2619d5443e80572'},
+}
+
+
 def need(ok, reason):
     if not ok:
         raise RuntimeError(reason)
@@ -103,7 +130,26 @@ def csv_fixture(path, column):
     return struct.pack('<112I', *(int(r[column]) for r in rows))
 
 
-def preflight():
+def case_config(case='baseline'):
+    need(case in CASES, 'INELIGIBLE: unknown case: ' + str(case))
+    return dict(case=case, **CASES[case])
+
+
+def input_identities(case='baseline'):
+    config = case_config(case)
+    pins = dict(PINS)
+    pins[Path(config['shader']).name] = (config['bytes'], config['sha256'])
+    return dict(case=config, pins=pins, hlsl=config['source_sha256'])
+
+
+def preflight(case='baseline'):
+    config = case_config(case)
+    shader, source = ROOT / config['shader'], ROOT / config['source']
+    need(shader.stat().st_size == config['bytes'], 'INELIGIBLE: selected shader size')
+    need(source.stat().st_size <= 1024**2, 'INELIGIBLE: selected HLSL size')
+    selected = shader.read_bytes()
+    need(digest(selected) == config['sha256'], 'INELIGIBLE: selected shader identity')
+    need(digest(source.read_bytes()) == config['source_sha256'], 'INELIGIBLE: selected HLSL identity')
     for path, limit in ((ROOT / 'data/baseline.dxil', 9796), (ROOT / 'source/baseline.hlsl', 1024**2),
                         (ROOT / 'evidence/nvidia-rtx5080.csv', 65536), (ROOT / 'evidence/expected.csv', 65536)):
         need(path.stat().st_size <= limit, 'INELIGIBLE: input size: ' + path.name)
@@ -118,6 +164,7 @@ def preflight():
         need(len(data[name]) == size and digest(data[name]) == sha, 'INELIGIBLE: input identity: ' + name)
     need(digest((ROOT / 'source/baseline.hlsl').read_bytes()) == HLSL_SHA, 'INELIGIBLE: HLSL identity')
     need(data['oracle.bin'] == csv_fixture(ROOT / 'evidence/expected.csv', 'expected_u32'), 'historical oracle CSV')
+    data[shader.name] = selected
     return data
 
 

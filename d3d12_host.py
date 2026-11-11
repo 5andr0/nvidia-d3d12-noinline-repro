@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from fixtures import (need, put, put_json, digest, words, finite, accounting, classify,
-                      word_report, select_adapter, allocation_total)
+                      word_report, select_adapter, allocation_total, case_config)
 from winabi import (U32, U64, P, SZ, ref, IIDS, Libraries, Owner, method, hr, wide,
     AdapterDesc, ModuleEntry, Message, ResourceDesc, Heap, Sample, Allocation, Range,
     Barrier, Transition, QueueDesc, QueryDesc, RootParameter, RootDesc, RootDescriptor,
@@ -267,7 +267,7 @@ def pipeline(c, shader):
     return root, state
 
 
-def execute(c, files):
+def execute(c, files, case='baseline'):
     c.queue = c.create(c.device, 'CreateCommandQueue', 'Queue', ref(QueueDesc()))
     c.allocator = c.create(c.device, 'CreateCommandAllocator', 'Allocator', 0)
     c.commands = c.create(c.device, 'CreateCommandList', 'List', 0, 0, c.allocator.p, None)
@@ -299,7 +299,7 @@ def execute(c, files):
     c.reset()
     seed = c.buffer(600, 2, GENERIC_READ, 'SO seed')
     upload(seed, b'\xa5' * 576 + bytes(24))
-    root, pso = pipeline(c, files['baseline.dxil'])
+    root, pso = pipeline(c, files[Path(case_config(case)['shader']).name])
     output = c.buffer(600, 1, COPY_DEST, 'SO output')
     readback = c.buffer(600, 3, COPY_DEST, 'SO readback')
     put_json(c.out / 'allocations.json', c.allocations)
@@ -382,7 +382,7 @@ def graphics(args, out, files):
         if status & 0xffffffff in (0x80070057, 0x887a0004) or (status >= 0 and sm.value < 0x68):
             raise Unsupported('shader model 6.8 unavailable; shader unchanged')
         hr(status, 'CheckFeatureSupport')
-        payload, valid = execute(c, files)
+        payload, valid = execute(c, files, args.case)
         clean = debug_messages(c)
         modules(c)
         classification = classify(payload, files['oracle.bin'], files['known-bad.bin'], valid and clean)

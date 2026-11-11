@@ -15,6 +15,25 @@ Each control used one four-vertex draw and two fenced submissions. Both children
 
 The later default `--all` selection change simply limits the command to NVIDIA plus WARP; the individual graphics and supervision paths are unchanged and CPU-tested. No Vulkan implementation or Vulkan test is included. Separate earlier Vulkan precision-fixture results are not a measurement of this exact112-word D3D12 case.
 
+## Current paired controls
+
+Fresh direct-Python measurements on 2026-11-11, RTX 5080, NVIDIA driver 32.0.16.2114 (`driver_version_raw=9007199255791682`), Windows build 26200:
+
+| Case | NVIDIA wrong words / 112 | WARP wrong words / 112 |
+|---|---:|---:|
+| Stock DXC, scalar return (`baseline`) |48|0|
+| Amended DXC, same scalar-return HLSL (`scalar-amended`) |48|0|
+| Same amended DXC, scalar out-result (`out-amended`) |0|0|
+| Same stock DXC as baseline, inout operand array (`array-stock`) |0|0|
+
+Each selection ran once without retries, exited cleanly, and passed complete input readbacks, all 112 output words, raw guards/counters, allocation and debug-layer checks. The debug layer was enabled. [Machine-readable results and per-word evidence](evidence/comparison-results.json) retain every comparison. The original baseline source/blob are unchanged.
+
+The stock `inout` candidate is a source-level workaround for this fixed case. It preserves the 20 noinline helpers, 37 calls, 12 precise dots, ordered arithmetic, graphics signatures and all 82 dependency edges. CPU tests also validated optimized/debug and default/FTZ variants, but this hardware table qualifies only the supplied optimized FTZ blobs. No general shader, performance or production compatibility claim is made.
+
+The same-compiler controls establish that amended DXC alone does not fix the scalar-return failure. Both out-result source forms pass in the tested configurations. This narrows the trigger without establishing NVIDIA's internal failure mechanism. The stock array form does not require DXC PR #9114.
+
+See [run and optional compile instructions](README.md) and [case hashes/compiler provenance](evidence/cases.json). The host remains pure Python/ctypes, with supplied shaders and no EXE/DLL dependency. NVIDIA plus WARP remain the default controls; AMD is explicit and optional.
+
 ## Historical C++ host results
 
 | Test | Wrong 32-bit words / 112 | Debug layer | Evidence |
@@ -57,6 +76,6 @@ The supplied shader is 9796 bytes, SHA256 `97504fa19268bf6086e15cf7944f54bb59c92
 
 The direct Python controls preserve these checks. All exercised arithmetic intermediates are positive integers no greater than 5350, exactly representable in binary32. An independent integer oracle checks all 112 output words without tolerance. Full vertex/constant-buffer readbacks are checked before PSO creation. The raw 600-byte stream-output audit retains two 64-byte guards, the 448-byte payload and filled/written/needed counts 448/4/4. Normal debug-layer capture found no ERROR/CORRUPTION messages in the independently inspected current-host controls. The result folders retain complete per-word CSV/JSON comparisons and adapter/runtime identities.
 
-The source archive includes all expected and historical observed values as text CSVs. A separate out-result source form has produced correct results on this host, but it changes the compiled form and does not isolate an ABI fault. No production workaround or native-instruction chronology is claimed.
+The source archive includes all expected and historical observed values as text CSVs. Earlier experiments changed several variables; the new same-compiler controls above address that limitation. The exact driver-internal mechanism and native-instruction chronology remain unknown. No general production workaround or performance guarantee is claimed.
 
 Please reproduce the attached source on NVIDIA hardware and investigate preservation of the indexed row values across the non-inlined helper calls. The additional NVIDIA/AMD/WARP comparison strengthens the NVIDIA-specific diagnosis, but does not by itself conclusively assign fault ownership.

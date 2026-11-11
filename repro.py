@@ -13,13 +13,17 @@ import subprocess
 import sys
 import time
 import uuid
-from fixtures import ROOT, PINS, HLSL_SHA, preflight, need, put, put_json, accounting, finite, classify, words, word_report
+from fixtures import (ROOT, CASES, case_config, input_identities, preflight, need, put, put_json,
+                      accounting, finite, classify, words, word_report)
 
 DEADLINE = 60.0
 DRAIN_SECONDS = 5.0
 OUTPUT_CAP = 64 * 1024**2
 SOURCE_FILES = ('repro.py', 'fixtures.py', 'winabi.py', 'd3d12_host.py', 'cpu_tests.py',
-                'source/baseline.hlsl', 'data/baseline.dxil', 'evidence/expected.csv', 'evidence/nvidia-rtx5080.csv')
+                'source/baseline.hlsl', 'source/out-result.hlsl', 'data/baseline.dxil',
+                'data/scalar-amended.dxil', 'data/out-amended.dxil', 'evidence/expected.csv',
+                'evidence/nvidia-rtx5080.csv', 'evidence/cases.json',
+                'source/array-inout.hlsl', 'data/array-stock.dxil')
 
 
 def source_manifest():
@@ -46,6 +50,8 @@ def parse(argv=None):
     group.add_argument('--luid', type=luid)
     group.add_argument('--list', action='store_true', help='explicit adapter inventory; creates a DXGI factory, no device')
     group.add_argument('--check-only', action='store_true', help='CPU checks only; no graphics DLL loading or enumeration')
+    parser.add_argument('--case', choices=tuple(CASES), default='baseline',
+                        help='pinned shader case (default: unchanged historical baseline)')
     parser.add_argument('--output', type=Path, help='fresh session directory (default: unique folder under results/)')
     parser.add_argument('--_child', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -59,20 +65,23 @@ def parse(argv=None):
 def child(args):
     args.output.mkdir()  # Parent directory exists; this directory must be fresh.
     put(args.output / 'STARTED.txt', 'INCOMPLETE until full raw gates and clean process exit are checked.\n')
-    result = dict(classification='INCOMPLETE', numeric_interpretation=False, reason='preflight unfinished')
+    result = dict(case=args.case, classification='INCOMPLETE', numeric_interpretation=False, reason='preflight unfinished')
     try:
-        files = preflight()
+        files = preflight(args.case)
         from winabi import validate_platform
         validate_platform()
         put_json(args.output / 'source-manifest.json', source_manifest())
         for name, data in files.items():
             put(args.output / name, data)
-        put(args.output / 'baseline.hlsl', (ROOT / 'source/baseline.hlsl').read_bytes())
-        put_json(args.output / 'input-identities.json', dict(pins=PINS, hlsl=HLSL_SHA))
+        config = case_config(args.case)
+        put(args.output / Path(config['source']).name, (ROOT / config['source']).read_bytes())
+        put_json(args.output / 'case.json', config)
+        put_json(args.output / 'input-identities.json', input_identities(args.case))
         from d3d12_host import graphics
         result = graphics(args, args.output, files)
     except Exception as error:
         result['reason'] = str(error)
+    result['case'] = args.case
     put_json(args.output / 'result.json', result)
     print(json.dumps(result), flush=True)
     return 0 if result.get('numeric_interpretation') or result['classification'] == 'LISTED' else 2 if result['classification'] == 'UNSUPPORTED' else 1
@@ -82,12 +91,17 @@ def output_size(folder):
     return sum(p.stat().st_size for p in folder.rglob('*') if p.is_file())
 
 
-def verify_numeric(output, result, files):
+def verify_numeric(output, result, files, case='baseline'):
     """Parent independently validates the full raw evidence before accepting numbers."""
     need(result.get('numeric_interpretation') is True, 'child numeric gate')
     for name, data in files.items():
         need((output / name).read_bytes() == data, 'retained input ' + name)
-    need((output / 'baseline.hlsl').read_bytes() == (ROOT / 'source/baseline.hlsl').read_bytes(), 'retained HLSL')
+    config = case_config(case)
+    need(result.get('case') == case, 'result case identity')
+    need(json.loads((output / 'case.json').read_text()) == config, 'retained case identity')
+    need(json.loads((output / 'input-identities.json').read_text()) ==
+         json.loads(json.dumps(input_identities(case))), 'retained input identities')
+    need((output / Path(config['source']).name).read_bytes() == (ROOT / config['source']).read_bytes(), 'retained HLSL')
     for name in ('synthetic-VB.bin', 'synthetic-CB.bin'):
         need((output / (name + '.readback.bin')).read_bytes() == files[name], 'full input readback ' + name)
     audit = (output / 'BASELINE.audit.bin').read_bytes()
@@ -183,11 +197,11 @@ def supervise(process, folder, started, clock=time.monotonic, sleep=time.sleep, 
     return reason, drained
 
 
-def run_once(label, selector, session, files, manifest):
+def run_once(label, selector, session, files, manifest, case='baseline'):
     # Windows signals become recorded cancellation until the child is owned,
     # drained, and its attempt record has been persisted.
     with deferred_cancellation() as cancelled:
-        record = run_owned(label, selector, session, files, manifest, cancelled)
+        record = run_owned(label, selector, session, files, manifest, cancelled, case)
     # Handlers have now been restored: no deferred signal can arrive after
     # this check. A signal captured during persistence/restoration invalidates
     # the final session even if the earlier immutable snapshot was eligible.
@@ -227,7 +241,7 @@ def persist_record(folder, record):
             stderr_best_effort('Cannot persist attempt outcome: ' + repr(fallback))
 
 
-def run_owned(label, selector, session, files, manifest, cancelled):
+def run_owned(label, selector, session, files, manifest, cancelled, case='baseline'):
     folder = session / label
     folder.mkdir()
     output = folder / 'capture'
@@ -240,7 +254,7 @@ def run_owned(label, selector, session, files, manifest, cancelled):
         stderr = (folder / 'stderr.log').open('xb')
         logs.append(stderr)
         # The only runtime subprocess is this same interpreter running this same script.
-        process = subprocess.Popen([sys.executable, '-E', '-s', str(ROOT / 'repro.py'), '--_child', *selector,
+        process = subprocess.Popen([sys.executable, '-E', '-s', str(ROOT / 'repro.py'), '--_child', *selector, '--case', case,
                                     '--output', str(output)], cwd=ROOT, stdout=stdout, stderr=stderr,
                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         reason, drained = supervise(process, folder, started, cancelled=cancelled)
@@ -267,7 +281,7 @@ def run_owned(label, selector, session, files, manifest, cancelled):
         result = json.loads((output / 'result.json').read_text(encoding='utf-8'))
         if reason is None and not errors and drained and code == 0 and result.get('numeric_interpretation') is True:
             need(source_manifest() == manifest == json.loads((output / 'source-manifest.json').read_text()), 'source changed during run')
-            numeric = verify_numeric(output, result, files)
+            numeric = verify_numeric(output, result, files, case)
             adapter = json.loads((output / 'adapter.json').read_text(encoding='utf-8'))
             if selector == ['--warp']:
                 need(adapter['software'] is True, 'explicit WARP identity')
@@ -281,14 +295,14 @@ def run_owned(label, selector, session, files, manifest, cancelled):
         numeric = False
         if reason is None:
             reason = 'collection failure: ' + str(error)
-    record = dict(selector=selector, exit=code, drained=drained, supervision_error=reason,
+    record = dict(case=case, selector=selector, exit=code, drained=drained, supervision_error=reason,
                   numeric_interpretation=numeric, result=result, output=str(output), seconds=time.monotonic() - started)
     for error in errors:
         report_error(record, error)
     try:
         if selector == ['--list'] and reason is None and not errors and drained and code == 0:
             print((output / 'adapters.json').read_text(encoding='utf-8'), flush=True)
-        print(f'{label}: ' + (f"{result['classification']}, {result['wrong_words']}/112 wrong words" if record['numeric_interpretation'] else
+        print(f'{label}: [{case}] ' + (f"{result['classification']}, {result['wrong_words']}/112 wrong words" if record['numeric_interpretation'] else
                              f"{result.get('classification', 'INCOMPLETE') if result else 'INCOMPLETE'} (exit {code}); inspect logs"), flush=True)
     except BaseException as error:
         report_error(record, 'console reporting failure: ' + repr(error))
@@ -314,16 +328,18 @@ def main(argv=None):
     if args._child:
         return child(args)
     if args.check_only:
+        preflight(args.case)
         import cpu_tests
         return cpu_tests.run()
     from winabi import validate_platform
     validate_platform()
-    files = preflight()  # Fail ineligible before launching any graphics child.
+    files = preflight(args.case)  # Fail ineligible before launching any graphics child.
     manifest = source_manifest()
     session = (args.output or ROOT / 'results' / (datetime.datetime.now().strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8])).resolve()
     session.parent.mkdir(parents=True, exist_ok=True)
     session.mkdir()
     put_json(session / 'source-manifest.json', manifest)
+    put_json(session / 'case.json', case_config(args.case))
     selections = [('nvidia', ['--vendor', 'nvidia']), ('warp', ['--warp'])]
     if not args.all:
         selections = [('list', ['--list'])] if args.list else [('luid', ['--luid', args.luid])] if args.luid else [
@@ -333,7 +349,7 @@ def main(argv=None):
     try:
         print(f'Results directory: {session}', flush=True)
         for label, selector in selections:
-            record = run_once(label, selector, session, files, manifest)
+            record = run_once(label, selector, session, files, manifest, args.case)
             records.append(record)
             if not save_summary(session, f'summary-{len(records)}.json', records):
                 break

@@ -1,0 +1,92 @@
+{
+  "measured_date": "2026-11-11",
+  "gpu": "NVIDIA GeForce RTX 5080",
+  "driver_version_raw": 9007199255791682,
+  "driver_version": "32.0.16.2114",
+  "windows_build": 26200,
+  "debug_layer": "enabled",
+  "draws_per_adapter_per_case": 1,
+  "retries": 0,
+  "cases": {
+    "baseline": {
+      "nvidia": {
+        "wrong_words": 48,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "5f1babdb87258733bb7dfbfc4d14eb223be0b9bd0367600c84dc61f3553bc5cf",
+        "word_evidence": "evidence/baseline-nvidia-20261111.csv"
+      },
+      "warp": {
+        "wrong_words": 0,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "9db85bb2a574f2a71b3a9e0da815f0f71d80cabfa6047d83c87017d6d787f92f",
+        "word_evidence": "evidence/baseline-warp-20261111.csv"
+      }
+    },
+    "array-stock": {
+      "nvidia": {
+        "wrong_words": 0,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "9db85bb2a574f2a71b3a9e0da815f0f71d80cabfa6047d83c87017d6d787f92f",
+        "word_evidence": "evidence/array-stock-nvidia-20261111.csv"
+      },
+      "warp": {
+        "wrong_words": 0,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "9db85bb2a574f2a71b3a9e0da815f0f71d80cabfa6047d83c87017d6d787f92f",
+        "word_evidence": "evidence/array-stock-warp-20261111.csv"
+      }
+    },
+    "scalar-amended": {
+      "nvidia": {
+        "wrong_words": 48,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "5f1babdb87258733bb7dfbfc4d14eb223be0b9bd0367600c84dc61f3553bc5cf",
+        "word_evidence": "evidence/scalar-amended-nvidia-20261111.csv"
+      },
+      "warp": {
+        "wrong_words": 0,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "9db85bb2a574f2a71b3a9e0da815f0f71d80cabfa6047d83c87017d6d787f92f",
+        "word_evidence": "evidence/scalar-amended-warp-20261111.csv"
+      }
+    },
+    "out-amended": {
+      "nvidia": {
+        "wrong_words": 0,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "9db85bb2a574f2a71b3a9e0da815f0f71d80cabfa6047d83c87017d6d787f92f",
+        "word_evidence": "evidence/out-amended-nvidia-20261111.csv"
+      },
+      "warp": {
+        "wrong_words": 0,
+        "total_words": 112,
+        "process_exit": 0,
+        "numeric_interpretation": true,
+        "full_input_readbacks_and_raw_debug_gates_pass": true,
+        "output_sha256": "9db85bb2a574f2a71b3a9e0da815f0f71d80cabfa6047d83c87017d6d787f92f",
+        "word_evidence": "evidence/out-amended-warp-20261111.csv"
+      }
+    }
+  }
+}

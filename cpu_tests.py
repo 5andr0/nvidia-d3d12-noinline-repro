@@ -407,6 +407,132 @@ class Checks(unittest.TestCase):
             self.assertEqual(len(json.loads((session / 'summary.json').read_text())), 2)
 
 
+    def test_case_pins_inputs_and_unknown_case(self):
+        import repro
+        self.assertEqual(repro.parse(['--all']).case, 'baseline')
+        for case in f.CASES:
+            config, data = f.case_config(case), f.preflight(case)
+            self.assertEqual(repro.parse(['--all', '--case', case]).case, case)
+            selected = data[Path(config['shader']).name]
+            self.assertEqual((len(selected), f.digest(selected)), (config['bytes'], config['sha256']))
+            self.assertEqual(f.digest((f.ROOT / config['source']).read_bytes()), config['source_sha256'])
+            for name in self.data:
+                self.assertEqual(data[name], self.data[name])
+        with self.assertRaisesRegex(RuntimeError, 'unknown case'):
+            f.preflight('unknown')
+        with patch.object(repro, 'preflight', side_effect=AssertionError('reject before preflight')), \
+                contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            repro.main(['--all', '--case', 'unknown'])
+
+    def test_case_corruption_rejected_before_graphics_child(self):
+        import repro
+        import shutil
+        for case in f.CASES:
+            for key in ('source', 'shader'):
+                with self.subTest(case=case, key=key), tempfile.TemporaryDirectory() as d:
+                    root = Path(d)
+                    for folder in ('source', 'data', 'evidence'):
+                        shutil.copytree(f.ROOT / folder, root / folder)
+                    target = root / f.CASES[case][key]
+                    blob = target.read_bytes()
+                    target.write_bytes(bytes([blob[0] ^ 1]) + blob[1:])
+                    with patch.object(f, 'ROOT', root), patch.object(repro.subprocess, 'Popen') as spawn:
+                        with self.assertRaisesRegex(RuntimeError, 'INELIGIBLE'):
+                            repro.main(['--all', '--case', case])
+                        spawn.assert_not_called()
+
+    def test_every_case_all_selects_nvidia_and_warp_once(self):
+        import repro
+        for case in f.CASES:
+            def outcome(label, selector, session, files, manifest, selected):
+                self.assertEqual(selected, case)
+                return dict(case=selected, selector=selector, numeric_interpretation=True,
+                            supervision_error=None, drained=True, exit=0, result=dict(wrong_words=0))
+            with tempfile.TemporaryDirectory() as d, patch.object(repro, 'run_once', side_effect=outcome) as attempt, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                session = Path(d) / 'session'
+                self.assertEqual(repro.main(['--all', '--case', case, '--output', str(session)]), 0)
+                self.assertEqual([call.args[:2] for call in attempt.call_args_list],
+                                 [('nvidia', ['--vendor', 'nvidia']), ('warp', ['--warp'])])
+                self.assertEqual([r['case'] for r in json.loads((session / 'summary.json').read_text())], [case, case])
+
+    def test_case_parent_child_summary_and_capture_propagation(self):
+        import repro
+        import d3d12_host
+        for case in f.CASES:
+            files, config = f.preflight(case), f.case_config(case)
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as d:
+                session = Path(d) / 'session'
+                spawns = []
+                def spawn(argv, **kwargs):
+                    spawns.append(argv)
+                    self.assertEqual(argv[argv.index('--case') + 1], case)
+                    output = Path(argv[-1])
+                    args = repro.parse(['--_child', '--warp', '--case', case, '--output', str(output)])
+                    def graphics(args, out, received):
+                        self.assertEqual(args.case, case)
+                        self.assertEqual(received, files)
+                        f.put_json(out / 'adapter.json', dict(software=True))
+                        return dict(numeric_interpretation=True, classification='CORRECT', wrong_words=0)
+                    with patch.object(d3d12_host, 'graphics', side_effect=graphics):
+                        self.assertEqual(repro.child(args), 0)
+                    process = Mock(returncode=0)
+                    process.poll.return_value = 0
+                    return process
+                with patch.object(repro.subprocess, 'Popen', side_effect=spawn), \
+                        patch.object(repro, 'verify_numeric', return_value=True) as verify, \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(repro.main(['--warp', '--case', case, '--output', str(session)]), 0)
+                self.assertEqual(len(spawns), 1)
+                capture = session / 'warp/capture'
+                verify.assert_called_once_with(capture, json.loads((capture / 'result.json').read_text()), files, case)
+                for folder in (session, capture):
+                    self.assertEqual(json.loads((folder / 'case.json').read_text()), config)
+                for name in ('summary.json', 'summary-1.json', 'warp/supervision.json'):
+                    value = json.loads((session / name).read_text())
+                    record = value[0] if isinstance(value, list) else value
+                    self.assertEqual(record['case'], case)
+                    self.assertEqual(record['result']['case'], case)
+                self.assertEqual((capture / Path(config['source']).name).read_bytes(), (f.ROOT / config['source']).read_bytes())
+                identities = json.loads((capture / 'input-identities.json').read_text())
+                self.assertEqual(identities, json.loads(json.dumps(f.input_identities(case))))
+
+    def test_case_shader_reaches_pipeline_without_native_calls(self):
+        import d3d12_host as host
+        class StopAtPipeline(Exception):
+            pass
+        for case in f.CASES:
+            files = f.preflight(case)
+            with tempfile.TemporaryDirectory() as d:
+                c = Mock(out=Path(d))
+                with patch.object(host, 'upload'), \
+                        patch.object(host, 'download', side_effect=[files['synthetic-VB.bin'], files['synthetic-CB.bin']]), \
+                        patch.object(host, 'pipeline', side_effect=StopAtPipeline) as pipeline:
+                    with self.assertRaises(StopAtPipeline):
+                        host.execute(c, files, case)
+                    pipeline.assert_called_once_with(c, files[Path(f.CASES[case]['shader']).name])
+
+    def test_parent_rejects_case_and_identity_mismatches(self):
+        import repro
+        for case in f.CASES:
+            files, config = f.preflight(case), f.case_config(case)
+            with tempfile.TemporaryDirectory() as d:
+                folder = Path(d)
+                for name, data in files.items():
+                    f.put(folder / name, data)
+                result = dict(numeric_interpretation=True, case='unknown')
+                with self.assertRaisesRegex(RuntimeError, 'result case identity'):
+                    repro.verify_numeric(folder, result, files, case)
+                result['case'] = case
+                f.put_json(folder / 'case.json', dict(config, case='unknown'))
+                with self.assertRaisesRegex(RuntimeError, 'retained case identity'):
+                    repro.verify_numeric(folder, result, files, case)
+                (folder / 'case.json').write_text(json.dumps(config))
+                f.put_json(folder / 'input-identities.json', {})
+                with self.assertRaisesRegex(RuntimeError, 'retained input identities'):
+                    repro.verify_numeric(folder, result, files, case)
+
+
 def run():
     a.validate_platform()
     # Fail immediately if any test accidentally attempts a system/graphics DLL load.

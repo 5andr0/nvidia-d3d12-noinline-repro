@@ -1,0 +1,132 @@
+{
+  "cases": {
+    "baseline": {
+      "source": "source/baseline.hlsl",
+      "source_sha256": "0f1a6f974cf765f9bc54553808d693437e5a3825232e49633d954585c8563bcb",
+      "shader": "data/baseline.dxil",
+      "bytes": 9796,
+      "sha256": "97504fa19268bf6086e15cf7944f54bb59c92647f743a1403226214253515208"
+    },
+    "scalar-amended": {
+      "source": "source/baseline.hlsl",
+      "source_sha256": "0f1a6f974cf765f9bc54553808d693437e5a3825232e49633d954585c8563bcb",
+      "shader": "data/scalar-amended.dxil",
+      "bytes": 9888,
+      "sha256": "c01d780f23507751170192927f15cb6359c23c951fa0b523a46dd04a42ac20b5"
+    },
+    "out-amended": {
+      "source": "source/out-result.hlsl",
+      "source_sha256": "9a5eb0daae3aa6149d6f728bbfb2f4176a7c29158ccab9a11dfe29d289a2d5ae",
+      "shader": "data/out-amended.dxil",
+      "bytes": 12432,
+      "sha256": "f56f47c68fe29980d76b961e0e86a4ccf3e469fd21fe0b877be6536123cdab00"
+    },
+    "array-stock": {
+      "source": "source/array-inout.hlsl",
+      "source_sha256": "6723b7232c85b761d49bfbaa9e6d6c269a0df82ea74470544bc721c15f9e040f",
+      "shader": "data/array-stock.dxil",
+      "bytes": 15724,
+      "sha256": "1fbed79006488999391766c4471ad9dfe7ca2b38f4b0e813f2619d5443e80572"
+    }
+  },
+  "paired_compiler": {
+    "source_commit": "da86a8b0b8e8d4de8f34455fdf6566167c555643",
+    "source_url": "https://github.com/5andr0/DirectXShaderCompiler/commit/da86a8b0b8e8d4de8f34455fdf6566167c555643",
+    "patch_url": "https://github.com/microsoft/DirectXShaderCompiler/pull/9114",
+    "status": "Unreleased amended DXC built from source; not a stock SDK compiler",
+    "creator": "dxc(private) 1.10.0.2 (codex/fix-callee-output-dependencies, 0d3e2c61-dirty)",
+    "build_note": "The build predates the final commit amendment; compiler content is pinned by its DLL hash, and the qualified dependency-builder source matches the amended source.",
+    "dxcompiler_sha256": "22ecda27e07e0770ff89f883f798614430cff2da7a243efea6cb8055226783c1",
+    "dxc_sha256": "5cd0a6a9324080f16ae1cbe1708173870afc0b92baa6c86cb37addadbc80f91b",
+    "validator": "Official Windows SDK 10.0.26100.0 x64 dxil.dll",
+    "validator_sha256": "77e039c905030a641e53658a008b74e90635a5ea9b6b79eabd0f2003bdfca59a",
+    "validator_selection": "DXC_DXIL_DLL_PATH",
+    "flags": [
+      "-E",
+      "main",
+      "-T",
+      "vs_6_8",
+      "-HV",
+      "2018",
+      "-no-warnings",
+      "-Ges",
+      "-denorm",
+      "ftz"
+    ],
+    "normal_validation_and_signing": true,
+    "actual_loaded_compiler_and_validator_hashes_observed": true
+  },
+  "cpu_proof": {
+    "exact_source_inverse": true,
+    "helpers": 20,
+    "live_helper_calls": 37,
+    "precise_dots": 12,
+    "ordered_operations_equal_after_result_transport_normalization": true,
+    "signature_parts_and_PSV0_byte_equal": true,
+    "PSV_input_to_output_masks": [
+      124780551,
+      124780551,
+      124780551,
+      124780551,
+      7,
+      7,
+      7,
+      7,
+      7344119,
+      7,
+      7,
+      118484999
+    ],
+    "PSV_edges": 82,
+    "full_reflection_retained": true,
+    "reflection_STAT_parts_equal_to_Fre": true,
+    "shared_integer_oracle_words": 112,
+    "shared_integer_oracle_maximum": 5350
+  },
+  "gpu_status": {
+    "baseline": {
+      "nvidia_wrong_words": 48,
+      "warp_wrong_words": 0,
+      "total_words": 112,
+      "evidence": "comparison-results.json"
+    },
+    "array-stock": {
+      "nvidia_wrong_words": 0,
+      "warp_wrong_words": 0,
+      "total_words": 112,
+      "evidence": "comparison-results.json"
+    },
+    "scalar-amended": {
+      "nvidia_wrong_words": 48,
+      "warp_wrong_words": 0,
+      "total_words": 112,
+      "evidence": "comparison-results.json"
+    },
+    "out-amended": {
+      "nvidia_wrong_words": 0,
+      "warp_wrong_words": 0,
+      "total_words": 112,
+      "evidence": "comparison-results.json"
+    }
+  },
+  "array_stock_compiler": {
+    "status": "Official Windows SDK 10.0.26100.0 x64 DXC, unmodified",
+    "dxcompiler_sha256": "78b5e21a91707b4a567ef281a519c52a45b709561202f54c5ad79c5a315847ed",
+    "validator_sha256": "77e039c905030a641e53658a008b74e90635a5ea9b6b79eabd0f2003bdfca59a",
+    "flags": [
+      "-E",
+      "main",
+      "-T",
+      "vs_6_8",
+      "-HV",
+      "2018",
+      "-Ges",
+      "-denorm",
+      "ftz"
+    ],
+    "normal_validation_and_signing": true,
+    "PSV_edges": 82,
+    "ordered_operations_equal": true,
+    "signature_parts_and_PSV0_byte_equal": true
+  }
+}

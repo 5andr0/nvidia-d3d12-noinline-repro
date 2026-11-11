@@ -10,3 +10,6 @@ __pycache__/
 *.dll
 *.dxil
 !/data/baseline.dxil
+!/data/scalar-amended.dxil
+!/data/out-amended.dxil
+!/data/array-stock.dxil

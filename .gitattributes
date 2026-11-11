@@ -1,5 +1,10 @@
 * text=auto eol=lf
 # Preserve the measured HLSL bytes, including line endings.
-source/baseline.hlsl -text
-# The one authored, normally signed shader supplied for execution.
+source/baseline.hlsl -text whitespace=cr-at-eol
+# Authored, normally signed shaders supplied for execution.
 data/baseline.dxil binary
+source/out-result.hlsl -text whitespace=cr-at-eol
+data/scalar-amended.dxil binary
+data/out-amended.dxil binary
+source/array-inout.hlsl -text whitespace=cr-at-eol
+data/array-stock.dxil binary
